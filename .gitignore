@@ -1,0 +1,24 @@
+# Sensible Konfiguration / Secrets
+.env
+config.py
+config.json
+
+# Legacy-JSON-Daten (werden in die DB migriert)
+produkte.json
+rezepte.json
+users.json
+ai_config.json
+
+# JSON-Fallback-/Spiegel-Verzeichnis
+data/
+
+# Lokale Test-Datenbank (SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
