@@ -19,7 +19,7 @@ type Product struct {
 
 func (r *ProductRepository) CreateTable() error {
 	_, err := r.Db.Exec(`CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY,
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id INTEGER,
     name TEXT,
     expire DATE,

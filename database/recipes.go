@@ -21,7 +21,7 @@ type Recipe struct {
 
 func (r *RecipeRepository) CreateTable() error {
 	_, err := r.Db.Exec(`CREATE TABLE IF NOT EXISTS recipes (
-    id INTEGER PRIMARY KEY,
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id INTEGER,
     recipe_key TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
