@@ -76,3 +76,16 @@ button:disabled {
   background: var(--text-muted);
   cursor: not-allowed;
 }
+
+.link-button {
+  background: transparent;
+  color: var(--text);
+  font-weight: 400;
+  text-decoration: underline;
+  padding: 4px;
+}
+
+.link-button:hover {
+  background: transparent;
+  color: var(--accent-hover);
+}

@@ -9,9 +9,10 @@ export interface LoggedInUser {
 
 interface LoginPageProps {
   onLoginSuccess: (user: LoggedInUser) => void;
+  onShowRegister: () => void;
 }
 
-export function LoginPage({ onLoginSuccess }: LoginPageProps) {
+export function LoginPage({ onLoginSuccess, onShowRegister }: LoginPageProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -70,6 +71,9 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
         )}
         <button type="submit" disabled={loading}>
           {loading ? "Anmelden..." : "Login"}
+        </button>
+        <button type="button" className="link-button" onClick={onShowRegister}>
+          Konto erstellen
         </button>
       </form>
     </div>
