@@ -1,0 +1,10 @@
+services:
+  app:
+    image: smartfridge:test
+    environment:
+      PORT: 8000
+      HTTPS: ${HTTPS}
+      DATABASE_URL: ${DATABASE_URL}
+    ports:
+      - "${PORT}:8000"
+    restart: unless-stopped

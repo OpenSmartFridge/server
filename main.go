@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"smartfridge/database"
@@ -24,6 +25,18 @@ const defaultPort = "8000"
 var smartfridgeApp embed.FS
 
 var sessionManager *scs.SessionManager
+
+func GetOutboundIP() net.IP {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+
+	return localAddr.IP
+}
 
 func createUser(userRepository *database.UserRepository, username string, password string) error {
 	hash, err := argon2id.CreateHash(password, argon2id.DefaultParams)
@@ -365,6 +378,8 @@ func main() {
 		port = defaultPort
 	}
 
-	log.Printf("SmartFridge läuft auf http://localhost:%s", port)
+	ip := GetOutboundIP()
+
+	log.Printf("SmartFride running on http://localhost:%s and http://%s:%s", port, ip, port)
 	log.Fatal(http.ListenAndServe(":"+port, sessionManager.LoadAndSave(http.DefaultServeMux)))
 }
