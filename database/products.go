@@ -28,3 +28,59 @@ func (r *ProductRepository) CreateTable() error {
 
 	return err
 }
+
+func (r *ProductRepository) CreateProduct(product *Product) error {
+	_, err := r.Db.Exec(`INSERT INTO products (user_id, name, expire) VALUES ($1, $2, $3)`, product.UserId, product.Name, product.Expire)
+
+	return err
+}
+
+func (r *ProductRepository) GetProducts(userId int) ([]Product, error) {
+	var products []Product
+
+	rows, err := r.Db.Query(`SELECT * FROM products WHERE user_id = $1`, userId)
+	if err != nil {
+		return products, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p Product
+
+		err := rows.Scan(&p.Id, &p.UserId, &p.Name, &p.Expire, &p.Position)
+		if err != nil {
+			return products, err
+		}
+		products = append(products, p)
+	}
+
+	return products, nil
+}
+
+func (r *ProductRepository) GetProductById(id int) (Product, error) {
+	var p Product
+
+	err := r.Db.QueryRow(`SELECT * FROM products WHERE id = $1`, id).Scan(&p.Id, &p.UserId, &p.Name, &p.Expire, &p.Position)
+	if err != nil {
+		return p, err
+	}
+
+	return p, nil
+}
+
+func (r *ProductRepository) GetProductId(name string) (int, error) {
+	var id int
+
+	err := r.Db.QueryRow(`SELECT id FROM products WHERE name = $1`, name).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+
+	return id, nil
+}
+
+func (r *ProductRepository) DeleteProduct(id int) error {
+	_, err := r.Db.Exec(`DELETE FROM products WHERE id = $1`, id)
+
+	return err
+}

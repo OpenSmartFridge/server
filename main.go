@@ -146,6 +146,7 @@ func meHandler(userRepository *database.UserRepository) http.HandlerFunc {
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 			return
 		}
+
 		id, ok := sessionManager.Get(r.Context(), "id").(int)
 		if !ok {
 			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
@@ -168,6 +169,122 @@ func meHandler(userRepository *database.UserRepository) http.HandlerFunc {
 				"is_admin": user.IsAdmin,
 			},
 		})
+	}
+}
+
+func getProductsHandler(productRepository *database.ProductRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		products, err := productRepository.GetProducts(id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(products)
+	}
+}
+
+func createProductHandler(productRepository *database.ProductRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		var request struct {
+			UserId int       `json:"user_id"`
+			Name   string    `json:"name"`
+			Expire time.Time `json:"expire"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&request)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		if id != request.UserId {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		product := database.Product{
+			UserId: request.UserId,
+			Name:   request.Name,
+			Expire: request.Expire,
+		}
+
+		err = productRepository.CreateProduct(&product)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "Product created successfully!"})
+	}
+}
+
+func deleteProductHandler(productRepository *database.ProductRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		var request struct {
+			Id int `json:"id"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&request)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		product, err := productRepository.GetProductById(request.Id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if product.UserId != id {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		err = productRepository.DeleteProduct(request.Id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "Product deleted successfully!"})
 	}
 }
 
@@ -235,8 +352,12 @@ func main() {
 
 	http.Handle("/api/create_user", createUserHandler(userRepository))
 	http.Handle("/api/login", loginHandler(userRepository))
-	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 	http.Handle("/api/me", meHandler(userRepository))
+	http.Handle("/api/get_products", getProductsHandler(productRepository))
+	http.Handle("/api/create_product", createProductHandler(productRepository))
+	http.Handle("/api/delete_product", deleteProductHandler(productRepository))
+
+	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 
 	port := os.Getenv("PORT")
 
