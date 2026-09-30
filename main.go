@@ -140,6 +140,43 @@ func loginHandler(userRepository *database.UserRepository) http.HandlerFunc {
 	}
 }
 
+func meHandler(userRepository *database.UserRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		userId := sessionManager.Get(r.Context(), "id").(string)
+		if userId == "" {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		id, err := strconv.Atoi(userId)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		user, err := userRepository.GetUser(id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "authorized",
+			"user": map[string]interface{}{
+				"id":       user.Id,
+				"username": user.Username,
+				"diet":     user.Diet,
+				"is_admin": user.IsAdmin,
+			},
+		})
+	}
+}
+
 type spaFileSystem struct {
 	base http.FileSystem
 }
@@ -204,8 +241,8 @@ func main() {
 
 	http.Handle("/api/create_user", createUserHandler(userRepository))
 	http.Handle("/api/login", loginHandler(userRepository))
-
 	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
+	http.Handle("/api/me", meHandler(userRepository))
 
 	port := os.Getenv("PORT")
 
