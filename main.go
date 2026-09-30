@@ -146,15 +146,9 @@ func meHandler(userRepository *database.UserRepository) http.HandlerFunc {
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 			return
 		}
-		userId := sessionManager.Get(r.Context(), "id").(string)
-		if userId == "" {
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
 			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-			return
-		}
-
-		id, err := strconv.Atoi(userId)
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 

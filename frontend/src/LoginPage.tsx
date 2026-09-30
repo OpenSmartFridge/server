@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 export interface LoggedInUser {
   id: number;
   username: string;
-  diet: string | null;
+  diet: { String: string; Valid: boolean };
   is_admin: boolean;
 }
 
