@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"log"
 	"net"
@@ -324,6 +325,55 @@ func deleteProductHandler(productRepository *database.ProductRepository) http.Ha
 	}
 }
 
+func updateProductHandler(productRepository *database.ProductRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		var request struct {
+			Id       int       `json:"id"`
+			Name     string    `json:"name"`
+			Expire   time.Time `json:"expire"`
+			Position int       `json:"position"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&request)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		product := database.Product{
+			Id:       request.Id,
+			UserId:   id,
+			Name:     request.Name,
+			Expire:   request.Expire,
+			Position: request.Position,
+		}
+
+		err = productRepository.UpdateProduct(&product, id)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+				return
+			}
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(map[string]string{"message": "Product updated successfully!"})
+	}
+}
+
 type spaFileSystem struct {
 	base http.FileSystem
 }
@@ -409,6 +459,7 @@ func main() {
 	http.Handle("/api/get_products", getProductsHandler(productRepository))
 	http.Handle("/api/create_product", createProductHandler(productRepository))
 	http.Handle("/api/delete_product", deleteProductHandler(productRepository))
+	http.Handle("/api/update_product", updateProductHandler(productRepository))
 
 	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 

@@ -84,7 +84,7 @@ func (r *ProductRepository) GetProducts(userId int) ([]Product, error) {
 func (r *ProductRepository) GetProductById(id int, UserId int) (Product, error) {
 	var p Product
 
-	err := r.Db.QueryRow(`SELECT * FROM products WHERE id = $1 AND user_id = $2`, id, UserId).Scan(&p.Id, &p.UserId, &p.Name, &p.Expire, &p.Position)
+	err := r.Db.QueryRow(`SELECT id, user_id, name, expire, position FROM products WHERE id = $1 AND user_id = $2`, id, UserId).Scan(&p.Id, &p.UserId, &p.Name, &p.Expire, &p.Position)
 	if err != nil {
 		return p, err
 	}
@@ -94,6 +94,25 @@ func (r *ProductRepository) GetProductById(id int, UserId int) (Product, error) 
 
 func (r *ProductRepository) DeleteProduct(id int, userId int) error {
 	result, err := r.Db.Exec(`DELETE FROM products WHERE id = $1 AND user_id = $2`, id, userId)
+
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (r *ProductRepository) UpdateProduct(product *Product, userId int) error {
+	result, err := r.Db.Exec(`UPDATE products SET name = $1, expire = $2, position = $3 WHERE id = $4 AND user_id = $5`, product.Name, product.Expire, product.Position, product.Id, userId)
 
 	if err != nil {
 		return err
