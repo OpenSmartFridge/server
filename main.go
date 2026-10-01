@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/alexedwards/argon2id"
+	"github.com/alexedwards/scs/postgresstore"
+	_ "github.com/alexedwards/scs/postgresstore"
 	"github.com/alexedwards/scs/v2"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -327,12 +329,6 @@ func main() {
 		log.Fatal("Error parsing environment variable HTTPS")
 	}
 
-	sessionManager = scs.New()
-	sessionManager.Lifetime = 24 * time.Hour
-	sessionManager.Cookie.HttpOnly = true
-	sessionManager.Cookie.Secure = isHTTPS
-	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
-
 	frontendFS, err := fs.Sub(smartfridgeApp, "frontend/dist")
 	if err != nil {
 		log.Fatal(err)
@@ -342,6 +338,31 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	sessionManager = scs.New()
+	sessionManager.Store = postgresstore.New(dbConnection)
+	sessionManager.Lifetime = 24 * time.Hour
+	sessionManager.Cookie.HttpOnly = true
+	sessionManager.Cookie.Secure = isHTTPS
+	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
+
+	_, err = dbConnection.Exec(`
+	CREATE TABLE IF NOT EXISTS sessions (
+		token TEXT PRIMARY KEY,
+		data BYTEA NOT NULL,
+		expiry TIMESTAMPTZ NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS sessions_expiry_idx
+	ON sessions (expiry);
+`)
+	if err != nil {
+		log.Fatal("Fehler beim Erstellen der Session-Tabelle: ", err)
+	}
+
+	dbConnection.SetMaxOpenConns(25)
+	dbConnection.SetMaxIdleConns(10)
+	dbConnection.SetConnMaxLifetime(5 * time.Minute)
 
 	defer dbConnection.Close()
 
@@ -380,6 +401,13 @@ func main() {
 
 	ip := GetOutboundIP()
 
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      sessionManager.LoadAndSave(http.DefaultServeMux),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 	log.Printf("SmartFride running on http://localhost:%s and http://%s:%s", port, ip, port)
-	log.Fatal(http.ListenAndServe(":"+port, sessionManager.LoadAndSave(http.DefaultServeMux)))
+	log.Fatal(srv.ListenAndServe())
 }
