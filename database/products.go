@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"log"
 	"time"
 )
 
@@ -42,7 +43,13 @@ func (r *ProductRepository) GetProducts(userId int) ([]Product, error) {
 	if err != nil {
 		return products, err
 	}
-	defer rows.Close()
+
+	defer func() {
+		err = rows.Close()
+		if err != nil {
+			log.Printf("Error closing rows: %v", err)
+		}
+	}()
 
 	for rows.Next() {
 		var p Product

@@ -32,7 +32,12 @@ func GetOutboundIP() net.IP {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Println(err)
+		}
+	}()
 
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 
@@ -83,7 +88,10 @@ func createUserHandler(userRepository *database.UserRepository) http.HandlerFunc
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 
-		json.NewEncoder(w).Encode(map[string]string{"message": "User created successfully!"})
+		err = json.NewEncoder(w).Encode(map[string]string{"message": "User created successfully!"})
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -141,15 +149,18 @@ func loginHandler(userRepository *database.UserRepository) http.HandlerFunc {
 		sessionManager.Put(r.Context(), "id", user.Id)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		err = json.NewEncoder(w).Encode(map[string]any{
 			"message": "User logged successfully!",
-			"user": map[string]interface{}{
+			"user": map[string]any{
 				"id":       user.Id,
 				"username": user.Username,
 				"diet":     user.Diet,
 				"is_admin": user.IsAdmin,
 			},
 		})
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -173,15 +184,18 @@ func meHandler(userRepository *database.UserRepository) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		err = json.NewEncoder(w).Encode(map[string]any{
 			"message": "authorized",
-			"user": map[string]interface{}{
+			"user": map[string]any{
 				"id":       user.Id,
 				"username": user.Username,
 				"diet":     user.Diet,
 				"is_admin": user.IsAdmin,
 			},
 		})
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -205,7 +219,10 @@ func getProductsHandler(productRepository *database.ProductRepository) http.Hand
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(products)
+		err = json.NewEncoder(w).Encode(products)
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -252,7 +269,10 @@ func createProductHandler(productRepository *database.ProductRepository) http.Ha
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"message": "Product created successfully!"})
+		err = json.NewEncoder(w).Encode(map[string]string{"message": "Product created successfully!"})
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -297,7 +317,10 @@ func deleteProductHandler(productRepository *database.ProductRepository) http.Ha
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"message": "Product deleted successfully!"})
+		err = json.NewEncoder(w).Encode(map[string]string{"message": "Product deleted successfully!"})
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -346,13 +369,21 @@ func main() {
 
 	sessionRepository := database.SessionRepository{Db: dbConnection}
 
-	sessionRepository.CreateTable()
+	err = sessionRepository.CreateTable()
+	if err != nil {
+		return
+	}
 
 	dbConnection.SetMaxOpenConns(25)
 	dbConnection.SetMaxIdleConns(10)
 	dbConnection.SetConnMaxLifetime(5 * time.Minute)
 
-	defer dbConnection.Close()
+	defer func(dbConnection *sql.DB) {
+		err := dbConnection.Close()
+		if err != nil {
+			log.Printf("Error closing db connection: %s\n", err)
+		}
+	}(dbConnection)
 
 	userRepository := &database.UserRepository{Db: dbConnection}
 	err = userRepository.CreateTable()
@@ -396,6 +427,6 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
-	log.Printf("SmartFride running on http://localhost:%s and http://%s:%s", port, ip, port)
+	log.Printf("SmartFridge running on http://localhost:%s and http://%s:%s", port, ip, port)
 	log.Fatal(srv.ListenAndServe())
 }
