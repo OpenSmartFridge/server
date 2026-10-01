@@ -15,7 +15,6 @@ import (
 
 	"github.com/alexedwards/argon2id"
 	"github.com/alexedwards/scs/postgresstore"
-	_ "github.com/alexedwards/scs/postgresstore"
 	"github.com/alexedwards/scs/v2"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -345,19 +344,9 @@ func main() {
 	sessionManager.Cookie.Secure = isHTTPS
 	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
 
-	_, err = dbConnection.Exec(`
-	CREATE TABLE IF NOT EXISTS sessions (
-		token TEXT PRIMARY KEY,
-		data BYTEA NOT NULL,
-		expiry TIMESTAMPTZ NOT NULL
-	);
+	sessionRepository := database.SessionRepository{Db: dbConnection}
 
-	CREATE INDEX IF NOT EXISTS sessions_expiry_idx
-	ON sessions (expiry);
-`)
-	if err != nil {
-		log.Fatal("Fehler beim Erstellen der Session-Tabelle: ", err)
-	}
+	sessionRepository.CreateTable()
 
 	dbConnection.SetMaxOpenConns(25)
 	dbConnection.SetMaxIdleConns(10)
