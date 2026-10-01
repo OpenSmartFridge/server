@@ -81,10 +81,10 @@ func (r *ProductRepository) GetProducts(userId int) ([]Product, error) {
 	return products, nil
 }
 
-func (r *ProductRepository) GetProductById(id int) (Product, error) {
+func (r *ProductRepository) GetProductById(id int, UserId int) (Product, error) {
 	var p Product
 
-	err := r.Db.QueryRow(`SELECT * FROM products WHERE id = $1`, id).Scan(&p.Id, &p.UserId, &p.Name, &p.Expire, &p.Position)
+	err := r.Db.QueryRow(`SELECT * FROM products WHERE id = $1 AND user_id = $2`, id, UserId).Scan(&p.Id, &p.UserId, &p.Name, &p.Expire, &p.Position)
 	if err != nil {
 		return p, err
 	}

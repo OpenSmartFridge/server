@@ -299,7 +299,7 @@ func deleteProductHandler(productRepository *database.ProductRepository) http.Ha
 			return
 		}
 
-		product, err := productRepository.GetProductById(request.Id)
+		product, err := productRepository.GetProductById(request.Id, id)
 		if err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
