@@ -43,7 +43,6 @@ func GetOutboundIP() net.IP {
 func createUser(userRepository *database.UserRepository, username string, password string) error {
 	hash, err := argon2id.CreateHash(password, argon2id.DefaultParams)
 	if err != nil {
-		log.Fatal(err)
 		return err
 	}
 

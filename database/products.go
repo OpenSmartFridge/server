@@ -68,17 +68,6 @@ func (r *ProductRepository) GetProductById(id int) (Product, error) {
 	return p, nil
 }
 
-func (r *ProductRepository) GetProductId(name string) (int, error) {
-	var id int
-
-	err := r.Db.QueryRow(`SELECT id FROM products WHERE name = $1`, name).Scan(&id)
-	if err != nil {
-		return 0, err
-	}
-
-	return id, nil
-}
-
 func (r *ProductRepository) DeleteProduct(id int) error {
 	_, err := r.Db.Exec(`DELETE FROM products WHERE id = $1`, id)
 
