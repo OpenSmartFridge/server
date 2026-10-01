@@ -19,13 +19,24 @@ type Product struct {
 }
 
 func (r *ProductRepository) CreateTable() error {
-	_, err := r.Db.Exec(`CREATE TABLE IF NOT EXISTS products (
-    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    user_id INTEGER,
-    name TEXT,
-    expire DATE,
-    position INTEGER NOT NULL DEFAULT 0
-)`)
+	_, err := r.Db.Exec(`
+        CREATE TABLE IF NOT EXISTS products (
+            id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            expire DATE,
+            position INTEGER NOT NULL DEFAULT 0
+        )
+    `)
+
+	if err != nil {
+		return err
+	}
+
+	_, err = r.Db.Exec(`
+        CREATE INDEX IF NOT EXISTS idx_products_user_id
+        ON products(user_id)
+    `)
 
 	return err
 }
@@ -39,7 +50,7 @@ func (r *ProductRepository) CreateProduct(product *Product) error {
 func (r *ProductRepository) GetProducts(userId int) ([]Product, error) {
 	var products []Product
 
-	rows, err := r.Db.Query(`SELECT * FROM products WHERE user_id = $1`, userId)
+	rows, err := r.Db.Query(`SELECT id, user_id, name, expire, position FROM products WHERE user_id = $1`, userId)
 	if err != nil {
 		return products, err
 	}
@@ -58,7 +69,13 @@ func (r *ProductRepository) GetProducts(userId int) ([]Product, error) {
 		if err != nil {
 			return products, err
 		}
+
 		products = append(products, p)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return products, err
 	}
 
 	return products, nil
@@ -75,8 +92,21 @@ func (r *ProductRepository) GetProductById(id int) (Product, error) {
 	return p, nil
 }
 
-func (r *ProductRepository) DeleteProduct(id int) error {
-	_, err := r.Db.Exec(`DELETE FROM products WHERE id = $1`, id)
+func (r *ProductRepository) DeleteProduct(id int, userId int) error {
+	result, err := r.Db.Exec(`DELETE FROM products WHERE id = $1 AND user_id = $2`, id, userId)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }

@@ -46,7 +46,7 @@ func (r *UserRepository) GetUserId(username string) (int, error) {
 func (r *UserRepository) GetUser(id int) (*User, error) {
 	var user User
 
-	err := r.Db.QueryRow(`SELECT * FROM users WHERE id = $1`, id).Scan(&user.Id, &user.Username, &user.PasswordHash, &user.Diet, &user.IsAdmin)
+	err := r.Db.QueryRow(`SELECT id, username, passwordhash, diet, is_admin FROM users WHERE id = $1`, id).Scan(&user.Id, &user.Username, &user.PasswordHash, &user.Diet, &user.IsAdmin)
 	if err != nil {
 		return nil, err
 	}
