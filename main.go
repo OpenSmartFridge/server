@@ -5,6 +5,8 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -27,6 +29,17 @@ const defaultPort = "8000"
 var smartfridgeApp embed.FS
 
 var sessionManager *scs.SessionManager
+
+var openFoodFactsURL = "https://world.openfoodfacts.net/api/v2/product/%s%s"
+
+type ApiResponse struct {
+	Code    string `json:"code"`
+	Status  int    `json:"status"`
+	Verbose string `json:"status_verbose"`
+	Product struct {
+		ProductName string `json:"product_name"`
+	} `json:"product"`
+}
 
 func GetOutboundIP() net.IP {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
@@ -374,6 +387,78 @@ func updateProductHandler(productRepository *database.ProductRepository) http.Ha
 	}
 }
 
+func createProductByBarcodeHandler(productRepository *database.ProductRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		}
+
+		var request struct {
+			Barcode string    `json:"barcode"`
+			Expire  time.Time `json:"expire"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&request)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		url := fmt.Sprintf(openFoodFactsURL, request.Barcode, "?fields=product_name")
+
+		resp, err := http.Get(url)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+		}(resp.Body)
+
+		if resp.StatusCode != http.StatusOK {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		var apiResponse ApiResponse
+		err = json.NewDecoder(resp.Body).Decode(&apiResponse)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if apiResponse.Status != 1 {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		product := database.Product{
+			UserId: id,
+			Name:   apiResponse.Product.ProductName,
+			Expire: request.Expire,
+		}
+
+		err = productRepository.CreateProduct(&product)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(map[string]string{"message": "Product created successfully!"})
+	}
+}
+
 type spaFileSystem struct {
 	base http.FileSystem
 }
@@ -460,6 +545,7 @@ func main() {
 	http.Handle("/api/create_product", createProductHandler(productRepository))
 	http.Handle("/api/delete_product", deleteProductHandler(productRepository))
 	http.Handle("/api/update_product", updateProductHandler(productRepository))
+	http.Handle("/api/create_product_barcode", createProductByBarcodeHandler(productRepository))
 
 	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 
