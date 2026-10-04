@@ -235,6 +235,7 @@ func getProductsHandler(productRepository *database.ProductRepository) http.Hand
 		w.Header().Set("Content-Type", "application/json")
 		err = json.NewEncoder(w).Encode(products)
 		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 	}
@@ -459,6 +460,68 @@ func createProductByBarcodeHandler(productRepository *database.ProductRepository
 	}
 }
 
+func createApiKeyHandler(apiRepository *database.ApiRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		key, err := apiRepository.CreateKey(id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(map[string]string{"key": key})
+	}
+}
+
+func getProductsWithKeyHandler(productRepository *database.ProductRepository, apiRepository *database.ApiRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		var request struct {
+			Key string `json:"key"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&request)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		userId, err := apiRepository.GetUserId(request.Key)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		products, err := productRepository.GetProducts(userId)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(products)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
 type spaFileSystem struct {
 	base http.FileSystem
 }
@@ -538,6 +601,12 @@ func main() {
 		log.Fatal(err)
 	}
 
+	apiRepository := &database.ApiRepository{Db: dbConnection}
+	err = apiRepository.CreateTable()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	http.Handle("/api/create_user", createUserHandler(userRepository))
 	http.Handle("/api/login", loginHandler(userRepository))
 	http.Handle("/api/me", meHandler(userRepository))
@@ -546,6 +615,8 @@ func main() {
 	http.Handle("/api/delete_product", deleteProductHandler(productRepository))
 	http.Handle("/api/update_product", updateProductHandler(productRepository))
 	http.Handle("/api/create_product_barcode", createProductByBarcodeHandler(productRepository))
+	http.Handle("/api/create_key", createApiKeyHandler(apiRepository))
+	http.Handle("/api/get_products_with_key", getProductsWithKeyHandler(productRepository, apiRepository))
 
 	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 
