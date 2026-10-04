@@ -13,7 +13,9 @@ import (
 	"net/http"
 	"os"
 	"smartfridge/database"
+	"smartfridge/llm"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/alexedwards/argon2id"
@@ -72,6 +74,53 @@ func createUser(userRepository *database.UserRepository, username string, passwo
 	err = userRepository.CreateUser(&user)
 
 	return err
+}
+
+func BuildRecipePrompt(products []database.Product) string {
+	var builder strings.Builder
+
+	builder.WriteString(`
+Du bist ein Rezept-Assistent für einen intelligenten Kühlschrank.
+
+Erstelle aus den verfügbaren Produkten ein sinnvolles Rezept.
+
+Regeln:
+- Verwende möglichst viele der verfügbaren Produkte.
+- Verwende nur Produkte aus der angegebenen Liste.
+- Grundzutaten wie Salz, Pfeffer, Öl und Wasser dürfen verwendet werden.
+- Das Rezept muss realistisch und nachkochbar sein.
+- Antworte ausschließlich mit gültigem JSON.
+- Verwende kein Markdown.
+- Schreibe keinen Text außerhalb des JSON.
+
+Die Antwort muss exakt diese Struktur haben:
+
+{
+  "name": "string",
+  "description": "string",
+  "ingredients": [
+    {
+      "name": "string",
+      "amount": 0,
+      "unit": "string"
+    }
+  ],
+  "steps": [
+    "string"
+  ],
+  "servings": 0
+}
+
+Verfügbare Produkte:
+`)
+
+	for _, product := range products {
+		builder.WriteString("- ")
+		builder.WriteString(product.Name)
+		builder.WriteString("\n")
+	}
+
+	return builder.String()
 }
 
 func createUserHandler(userRepository *database.UserRepository) http.HandlerFunc {
@@ -522,6 +571,50 @@ func getProductsWithKeyHandler(productRepository *database.ProductRepository, ap
 	}
 }
 
+func generateRecipeHandler(productRepository *database.ProductRepository, client llm.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		products, err := productRepository.GetProducts(id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		prompt := BuildRecipePrompt(products)
+
+		response, err := client.Complete(r.Context(), prompt)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		var recipe database.Recipe
+
+		err = json.Unmarshal([]byte(response), &recipe)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		err = json.NewEncoder(w).Encode(recipe)
+		if err != nil {
+			return
+		}
+	}
+}
+
 type spaFileSystem struct {
 	base http.FileSystem
 }
@@ -607,6 +700,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	client, err := llm.NewFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	http.Handle("/api/create_user", createUserHandler(userRepository))
 	http.Handle("/api/login", loginHandler(userRepository))
 	http.Handle("/api/me", meHandler(userRepository))
@@ -617,6 +715,7 @@ func main() {
 	http.Handle("/api/create_product_barcode", createProductByBarcodeHandler(productRepository))
 	http.Handle("/api/create_key", createApiKeyHandler(apiRepository))
 	http.Handle("/api/get_products_with_key", getProductsWithKeyHandler(productRepository, apiRepository))
+	http.Handle("/api/generate_recipe", generateRecipeHandler(productRepository, client))
 
 	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 
@@ -632,9 +731,10 @@ func main() {
 		Addr:         ":" + port,
 		Handler:      sessionManager.LoadAndSave(http.DefaultServeMux),
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+
 	log.Printf("SmartFridge running on http://localhost:%s and http://%s:%s", port, ip, port)
 	log.Fatal(srv.ListenAndServe())
 }
