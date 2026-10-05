@@ -76,24 +76,26 @@ func createUser(userRepository *database.UserRepository, username string, passwo
 	return err
 }
 
-func BuildRecipePrompt(products []database.Product) string {
+func BuildRecipePrompt(products []database.Product, diet sql.NullString) string {
 	var builder strings.Builder
 
 	builder.WriteString(`
-Du bist ein Rezept-Assistent für einen intelligenten Kühlschrank.
+You are a recipe assistant for a smart refrigerator.
 
-Erstelle aus den verfügbaren Produkten ein sinnvolles Rezept.
+Create a suitable recipe using the available products.
+Consider the dietary requirements if any are provided.
 
-Regeln:
-- Verwende möglichst viele der verfügbaren Produkte.
-- Verwende nur Produkte aus der angegebenen Liste.
-- Grundzutaten wie Salz, Pfeffer, Öl und Wasser dürfen verwendet werden.
-- Das Rezept muss realistisch und nachkochbar sein.
-- Antworte ausschließlich mit gültigem JSON.
-- Verwende kein Markdown.
-- Schreibe keinen Text außerhalb des JSON.
+Rules:
+- Use as many of the available products as reasonably possible.
+- Only use products from the provided list.
+- Basic ingredients such as salt, pepper, oil, and water may be used.
+- The recipe must be realistic and practical to prepare.
+- Strictly follow the dietary requirements.
+- Respond exclusively with valid JSON.
+- Do not use Markdown.
+- Do not include any text outside the JSON.
 
-Die Antwort muss exakt diese Struktur haben:
+The response must have exactly this structure:
 
 {
   "name": "string",
@@ -110,15 +112,23 @@ Die Antwort muss exakt diese Struktur haben:
   ],
   "servings": 0
 }
-
-Verfügbare Produkte:
 `)
 
+	if diet.Valid && diet.String != "" {
+		builder.WriteString("\nDietary requirements:\n")
+		builder.WriteString(diet.String)
+		builder.WriteString("\n")
+	}
+
+	builder.WriteString("\nAvailable products:\n")
 	for _, product := range products {
 		builder.WriteString("- ")
 		builder.WriteString(product.Name)
 		builder.WriteString("\n")
 	}
+
+	builder.WriteString("\nLanguage:\n")
+	builder.WriteString(os.Getenv("LLM_LANGUAGE"))
 
 	return builder.String()
 }
@@ -571,7 +581,7 @@ func getProductsWithKeyHandler(productRepository *database.ProductRepository, ap
 	}
 }
 
-func generateRecipeHandler(productRepository *database.ProductRepository, client llm.Client) http.HandlerFunc {
+func generateRecipeHandler(productRepository *database.ProductRepository, userRepository *database.UserRepository, client llm.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -590,7 +600,14 @@ func generateRecipeHandler(productRepository *database.ProductRepository, client
 			return
 		}
 
-		prompt := BuildRecipePrompt(products)
+		user, err := userRepository.GetUser(id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+
+		diet := user.Diet
+
+		prompt := BuildRecipePrompt(products, diet)
 
 		response, err := client.Complete(r.Context(), prompt)
 		if err != nil {
@@ -598,16 +615,30 @@ func generateRecipeHandler(productRepository *database.ProductRepository, client
 			return
 		}
 
-		var recipe database.Recipe
+		type Ingredient struct {
+			Name   string  `json:"name"`
+			Amount float64 `json:"amount"`
+			Unit   string  `json:"unit"`
+		}
+
+		type GeneratedRecipe struct {
+			Name        string       `json:"name"`
+			Description string       `json:"description"`
+			Ingredients []Ingredient `json:"ingredients"`
+			Steps       []string     `json:"steps"`
+			Servings    int          `json:"servings"`
+		}
+
+		var recipe GeneratedRecipe
 
 		err = json.Unmarshal([]byte(response), &recipe)
 		if err != nil {
+			log.Printf("Recipe JSON error: %v", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-
 		err = json.NewEncoder(w).Encode(recipe)
 		if err != nil {
 			return
@@ -715,7 +746,7 @@ func main() {
 	http.Handle("/api/create_product_barcode", createProductByBarcodeHandler(productRepository))
 	http.Handle("/api/create_key", createApiKeyHandler(apiRepository))
 	http.Handle("/api/get_products_with_key", getProductsWithKeyHandler(productRepository, apiRepository))
-	http.Handle("/api/generate_recipe", generateRecipeHandler(productRepository, client))
+	http.Handle("/api/generate_recipe", generateRecipeHandler(productRepository, userRepository, client))
 
 	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 
