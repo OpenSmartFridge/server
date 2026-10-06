@@ -28,7 +28,6 @@ func (r *UserRepository) CreateTable() error {
 
 func (r *UserRepository) CreateUser(user *User) error {
 	_, err := r.Db.Exec(`INSERT INTO users (username, passwordhash) VALUES ($1, $2)`, user.Username, user.PasswordHash)
-
 	return err
 }
 
@@ -56,18 +55,10 @@ func (r *UserRepository) GetUser(id int) (*User, error) {
 
 func (r *UserRepository) UpdateDiet(id int, diet string) error {
 	_, err := r.Db.Exec(`UPDATE users SET diet = $1 WHERE id = $2`, diet, id)
-	if err != nil {
-		return err
-	}
-
 	return err
 }
 
 func (r *UserRepository) UpdatePasswordHash(id int, passwordHash string) error {
 	_, err := r.Db.Exec(`UPDATE users SET passwordhash = $1 WHERE id = $2`, passwordHash, id)
-	if err != nil {
-		return err
-	}
-
 	return err
 }

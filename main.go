@@ -581,7 +581,7 @@ func getProductsWithKeyHandler(productRepository *database.ProductRepository, ap
 	}
 }
 
-func generateRecipeHandler(productRepository *database.ProductRepository, userRepository *database.UserRepository, client llm.Client) http.HandlerFunc {
+func generateRecipeHandler(productRepository *database.ProductRepository, userRepository *database.UserRepository, recipeRepository *database.RecipeRepository, client llm.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -615,25 +615,21 @@ func generateRecipeHandler(productRepository *database.ProductRepository, userRe
 			return
 		}
 
-		type Ingredient struct {
-			Name   string  `json:"name"`
-			Amount float64 `json:"amount"`
-			Unit   string  `json:"unit"`
-		}
-
-		type GeneratedRecipe struct {
-			Name        string       `json:"name"`
-			Description string       `json:"description"`
-			Ingredients []Ingredient `json:"ingredients"`
-			Steps       []string     `json:"steps"`
-			Servings    int          `json:"servings"`
-		}
-
-		var recipe GeneratedRecipe
+		var recipe database.Recipe
 
 		err = json.Unmarshal([]byte(response), &recipe)
 		if err != nil {
-			log.Printf("Recipe JSON error: %v", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if recipe.Name == "0" {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		err = recipeRepository.CreateRecipe(recipe, id)
+		if err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
@@ -739,6 +735,30 @@ func updatePasswordHandler(userRepository *database.UserRepository) http.Handler
 	}
 }
 
+func getRecipesHandler(recipeRepository *database.RecipeRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		recipes, err := recipeRepository.GetRecipes(id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(recipes)
+	}
+}
+
 type spaFileSystem struct {
 	base http.FileSystem
 }
@@ -839,9 +859,10 @@ func main() {
 	http.Handle("/api/create_product_barcode", createProductByBarcodeHandler(productRepository))
 	http.Handle("/api/create_key", createApiKeyHandler(apiRepository))
 	http.Handle("/api/get_products_with_key", getProductsWithKeyHandler(productRepository, apiRepository))
-	http.Handle("/api/generate_recipe", generateRecipeHandler(productRepository, userRepository, client))
+	http.Handle("/api/generate_recipe", generateRecipeHandler(productRepository, userRepository, recipeRepository, client))
 	http.Handle("/api/update_diet", updateDietHandler(userRepository))
 	http.Handle("/api/update_password", updatePasswordHandler(userRepository))
+	http.Handle("/api/get_recipes", getRecipesHandler(recipeRepository))
 
 	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 
