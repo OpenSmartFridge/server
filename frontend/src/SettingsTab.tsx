@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { api } from "./api";
 import type { LoggedInUser } from "./LoginPage";
+import type { User } from "./types";
 
 interface SettingsTabProps {
   user: LoggedInUser;
@@ -21,6 +22,20 @@ export function SettingsTab({ user, onUserChange }: SettingsTabProps) {
   const [keyStatus, setKeyStatus] = useState("");
   const [keyGenerating, setKeyGenerating] = useState(false);
 
+  const [users, setUsers] = useState<User[]>([]);
+
+  useEffect(() => {
+    async function loadUsers() {
+      setUsers(await api.getUsers());
+    }
+
+    void loadUsers();
+  }, []);
+
+  async function loadUsers() {
+    setUsers(await api.getUsers());
+  }
+
   async function handleDietSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setDietStatus("");
@@ -30,7 +45,9 @@ export function SettingsTab({ user, onUserChange }: SettingsTabProps) {
       onUserChange({ ...user, diet: { String: diet, Valid: diet !== "" } });
       setDietStatus("Gespeichert.");
     } catch (err) {
-      setDietStatus(err instanceof Error ? err.message : "Fehler beim Speichern");
+      setDietStatus(
+        err instanceof Error ? err.message : "Fehler beim Speichern",
+      );
     } finally {
       setDietSaving(false);
     }
@@ -46,7 +63,9 @@ export function SettingsTab({ user, onUserChange }: SettingsTabProps) {
       setNewPassword("");
       setPasswordStatus("Passwort geändert.");
     } catch (err) {
-      setPasswordStatus(err instanceof Error ? err.message : "Fehler beim Ändern");
+      setPasswordStatus(
+        err instanceof Error ? err.message : "Fehler beim Ändern",
+      );
     } finally {
       setPasswordSaving(false);
     }
@@ -59,10 +78,16 @@ export function SettingsTab({ user, onUserChange }: SettingsTabProps) {
       const result = await api.createApiKey();
       setApiKey(result.key);
     } catch (err) {
-      setKeyStatus(err instanceof Error ? err.message : "Fehler beim Erstellen");
+      setKeyStatus(
+        err instanceof Error ? err.message : "Fehler beim Erstellen",
+      );
     } finally {
       setKeyGenerating(false);
     }
+  }
+
+  function handleDeleteUser(id: number) {
+    api.deleteUser(id);
   }
 
   return (
@@ -111,8 +136,14 @@ export function SettingsTab({ user, onUserChange }: SettingsTabProps) {
 
       <section className="settings-section">
         <h2>API-Schlüssel</h2>
-        <p>Erzeuge einen Schlüssel für den externen Zugriff auf deine Produkte.</p>
-        <button type="button" onClick={handleCreateKey} disabled={keyGenerating}>
+        <p>
+          Erzeuge einen Schlüssel für den externen Zugriff auf deine Produkte.
+        </p>
+        <button
+          type="button"
+          onClick={handleCreateKey}
+          disabled={keyGenerating}
+        >
           {keyGenerating ? "Erstelle..." : "Neuen Schlüssel erzeugen"}
         </button>
         {apiKey && (
@@ -123,6 +154,28 @@ export function SettingsTab({ user, onUserChange }: SettingsTabProps) {
           </p>
         )}
         {keyStatus && <p className="status-text">{keyStatus}</p>}
+      </section>
+
+      <section className="settings-section">
+        <h2>User Management</h2>
+        <ul className="user-list">
+          {users.map((listedUser) => (
+            <li className="user-list-item" key={listedUser.Id}>
+              <span>{listedUser.Username}</span>
+              <span className="item-meta">
+                {listedUser.IsAdmin ? "Admin" : "Benutzer"}
+                <button
+                  onClick={() => {
+                    handleDeleteUser(listedUser.Id);
+                    loadUsers();
+                  }}
+                >
+                  Delete
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
       </section>
     </div>
   );

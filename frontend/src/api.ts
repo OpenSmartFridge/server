@@ -1,4 +1,4 @@
-import type { Product, Recipe } from "./types";
+import type { Product, Recipe, User } from "./types";
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(url, {
@@ -59,4 +59,12 @@ export const api = {
     }),
 
   createApiKey: () => request<{ key: string }>("/api/create_key"),
+
+  deleteUser: (id: number) =>
+    request<{ message: string }>("/api/delete_user", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
+
+  getUsers: () => request<User[]>("/api/get_users"),
 };

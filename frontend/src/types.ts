@@ -24,3 +24,11 @@ export interface Recipe {
   IsFavorite: boolean;
   Position: number;
 }
+
+export interface User {
+  Id: number;
+  Username: string;
+  PasswordHash: string;
+  Diet: string | null;
+  IsAdmin: boolean;
+}
