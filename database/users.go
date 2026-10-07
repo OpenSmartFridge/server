@@ -62,3 +62,41 @@ func (r *UserRepository) UpdatePasswordHash(id int, passwordHash string) error {
 	_, err := r.Db.Exec(`UPDATE users SET passwordhash = $1 WHERE id = $2`, passwordHash, id)
 	return err
 }
+
+func (r *UserRepository) IsAdmin(id int) (bool, error) {
+	var isAdmin bool
+
+	err := r.Db.QueryRow(`SELECT is_admin FROM users WHERE id = $1`, id).Scan(&isAdmin)
+	if err != nil {
+		return false, err
+	}
+
+	return isAdmin, nil
+}
+
+func (r *UserRepository) DeleteUser(id int) error {
+	_, err := r.Db.Exec(`DELETE FROM users WHERE id = $1`, id)
+	return err
+}
+
+func (r *UserRepository) GetUsers() ([]User, error) {
+	var users []User
+
+	result, err := r.Db.Query(`SELECT id, username, is_admin FROM users`)
+	if err != nil {
+		return nil, err
+	}
+
+	for result.Next() {
+		var user User
+
+		err = result.Scan(&user.Id, &user.Username, &user.IsAdmin)
+		if err != nil {
+			return nil, err
+		}
+
+		users = append(users, user)
+	}
+
+	return users, nil
+}

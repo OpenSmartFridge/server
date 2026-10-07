@@ -129,3 +129,8 @@ func (r *ProductRepository) UpdateProduct(product *Product, userId int) error {
 
 	return nil
 }
+
+func (r *ProductRepository) DeleteProducts(id int) error {
+	_, err := r.Db.Exec(`DELETE FROM products WHERE user_id = $1`, id)
+	return err
+}

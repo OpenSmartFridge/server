@@ -133,6 +133,30 @@ The response must have exactly this structure:
 	return builder.String()
 }
 
+func DeleteUser(userRepository *database.UserRepository, recipeRepository *database.RecipeRepository, productRepository *database.ProductRepository, apiRepository *database.ApiRepository, id int) error {
+	err := userRepository.DeleteUser(id)
+	if err != nil {
+		return err
+	}
+
+	err = recipeRepository.DeleteRecipes(id)
+	if err != nil {
+		return err
+	}
+
+	err = productRepository.DeleteProducts(id)
+	if err != nil {
+		return err
+	}
+
+	err = apiRepository.DeleteApiKey(id)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func createUserHandler(userRepository *database.UserRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -759,6 +783,82 @@ func getRecipesHandler(recipeRepository *database.RecipeRepository) http.Handler
 	}
 }
 
+func deleteUserHandler(userRepository *database.UserRepository, recipeRepository *database.RecipeRepository, productRepository *database.ProductRepository, apiRepository *database.ApiRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		isAdmin, err := userRepository.IsAdmin(id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if !isAdmin {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		var request struct {
+			Id int `json:"id"`
+		}
+
+		err = json.NewDecoder(r.Body).Decode(&request)
+
+		err = DeleteUser(userRepository, recipeRepository, productRepository, apiRepository, request.Id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(map[string]string{"message": "Successfully deleted user!"})
+	}
+}
+
+func getUsersHandler(userRepository *database.UserRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		isAdmin, err := userRepository.IsAdmin(id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if !isAdmin {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		users, err := userRepository.GetUsers()
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(users)
+	}
+}
+
 type spaFileSystem struct {
 	base http.FileSystem
 }
@@ -863,6 +963,8 @@ func main() {
 	http.Handle("/api/update_diet", updateDietHandler(userRepository))
 	http.Handle("/api/update_password", updatePasswordHandler(userRepository))
 	http.Handle("/api/get_recipes", getRecipesHandler(recipeRepository))
+	http.Handle("/api/delete_user", deleteUserHandler(userRepository, recipeRepository, productRepository, apiRepository))
+	http.Handle("/api/get_users", getUsersHandler(userRepository))
 
 	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 

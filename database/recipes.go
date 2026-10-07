@@ -110,3 +110,8 @@ func (r *RecipeRepository) GetRecipes(userId int) ([]Recipe, error) {
 
 	return recipes, nil
 }
+
+func (r *RecipeRepository) DeleteRecipes(id int) error {
+	_, err := r.Db.Exec(`DELETE FROM recipes WHERE user_id = $1`, id)
+	return err
+}

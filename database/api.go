@@ -67,3 +67,8 @@ func (r *ApiRepository) GetUserId(key string) (int, error) {
 
 	return userId, nil
 }
+
+func (r *ApiRepository) DeleteApiKey(id int) error {
+	_, err := r.Db.Exec(`DELETE FROM api_keys WHERE user_id = $1`, id)
+	return err
+}
