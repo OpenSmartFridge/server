@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { LoginPage, type LoggedInUser } from "./LoginPage";
 import { RegisterPage } from "./RegisterPage";
+import { Dashboard } from "./Dashboard";
 
 type View = "login" | "register";
 
@@ -21,14 +22,7 @@ export function App() {
   }
 
   if (user) {
-    return (
-      <div className="container">
-        <h1>SmartFridge</h1>
-        <p style={{ textAlign: "center" }}>
-          Erfolgreich eingeloggt als <strong>{user.username}</strong>
-        </p>
-      </div>
-    );
+    return <Dashboard user={user} onUserChange={setUser} />;
   }
 
   if (view === "register") {
