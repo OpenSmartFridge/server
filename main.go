@@ -887,12 +887,12 @@ func main() {
 
 	frontendFS, err := fs.Sub(smartfridgeApp, "frontend/dist")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Error loading frontend filesystem")
 	}
 
 	dbConnection, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Error connecting to database")
 	}
 
 	sessionManager = scs.New()

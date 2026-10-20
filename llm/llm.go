@@ -108,7 +108,7 @@ func (c *openAiClient) Complete(ctx context.Context, prompt string) (string, err
 		},
 	})
 	if err != nil {
-		return "", nil
+		return "", err
 	}
 	if len(resp.Choices) == 0 {
 		return "", nil

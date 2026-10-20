@@ -1,6 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api } from "./api";
 import type { Product } from "./types";
+import { Scanner, type IDetectedBarcode } from "@yudiel/react-qr-scanner";
+import { MdVisibility } from "react-icons/md";
 
 interface ProductsTabProps {
   userId: number;
@@ -24,6 +26,10 @@ export function ProductsTab({ userId }: ProductsTabProps) {
   const [expire, setExpire] = useState("");
   const [barcode, setBarcode] = useState("");
   const [barcodeExpire, setBarcodeExpire] = useState("");
+
+  const [showScanner, setShowScanner] = useState(false);
+
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
@@ -75,6 +81,7 @@ export function ProductsTab({ userId }: ProductsTabProps) {
       setError("Produkt zum Barcode konnte nicht gefunden werden");
     } finally {
       setSubmitting(false);
+      setBarcode("");
     }
   }
 
@@ -110,8 +117,38 @@ export function ProductsTab({ userId }: ProductsTabProps) {
     }
   }
 
+  const handleScan = (detectedCodes: IDetectedBarcode[]) => {
+    if (detectedCodes.length > 0) {
+      const value = detectedCodes[0].rawValue;
+      setBarcode(value);
+      closeScannerPopUp();
+    }
+  };
+
+  const showScannerPopUp = () => {
+    setShowScanner(true);
+    dialogRef.current?.showModal();
+  };
+
+  const closeScannerPopUp = () => {
+    setShowScanner(false);
+    dialogRef.current?.close();
+  };
+
   return (
     <div>
+      <dialog ref={dialogRef} onClose={closeScannerPopUp}>
+        {showScanner && (
+          <Scanner
+            onScan={handleScan}
+            onError={(err) => console.log("Scanner Error: ", err)}
+          />
+        )}
+        <button type="button" onClick={closeScannerPopUp}>
+          Abbrechen
+        </button>
+      </dialog>
+
       <form onSubmit={handleAdd} className="inline-form">
         <input
           type="text"
@@ -148,6 +185,9 @@ export function ProductsTab({ userId }: ProductsTabProps) {
         <button type="submit" disabled={submitting}>
           Per Barcode hinzufügen
         </button>
+        <button onClick={showScannerPopUp}>
+          <MdVisibility style={{ verticalAlign: "middle" }} />
+        </button>
       </form>
 
       {error && <p className="error-text">{error}</p>}
@@ -157,49 +197,58 @@ export function ProductsTab({ userId }: ProductsTabProps) {
       ) : products.length === 0 ? (
         <p>Noch keine Produkte im Kühlschrank.</p>
       ) : (
-        <ul className="item-list">
-          {products.map((product) => (
-            <li key={product.Id} className="item-row">
-              {editingId === product.Id ? (
-                <>
-                  <input
-                    type="text"
-                    value={editName}
-                    onChange={(event) => setEditName(event.target.value)}
-                  />
-                  <input
-                    type="date"
-                    value={editExpire}
-                    onChange={(event) => setEditExpire(event.target.value)}
-                  />
-                  <button type="button" onClick={() => handleSaveEdit(product)}>
-                    Speichern
-                  </button>
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => setEditingId(null)}
-                  >
-                    Abbrechen
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className="item-name">{product.Name}</span>
-                  <span className="item-meta">
-                    {toDateInputValue(product.Expire)}
-                  </span>
-                  <button type="button" onClick={() => startEdit(product)}>
-                    Bearbeiten
-                  </button>
-                  <button type="button" onClick={() => handleDelete(product.Id)}>
-                    Löschen
-                  </button>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
+        <details>
+          <summary>Produkte</summary>
+          <ul className="item-list">
+            {products.map((product) => (
+              <li key={product.Id} className="item-row">
+                {editingId === product.Id ? (
+                  <>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(event) => setEditName(event.target.value)}
+                    />
+                    <input
+                      type="date"
+                      value={editExpire}
+                      onChange={(event) => setEditExpire(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveEdit(product)}
+                    >
+                      Speichern
+                    </button>
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => setEditingId(null)}
+                    >
+                      Abbrechen
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="item-name">{product.Name}</span>
+                    <span className="item-meta">
+                      {toDateInputValue(product.Expire)}
+                    </span>
+                    <button type="button" onClick={() => startEdit(product)}>
+                      Bearbeiten
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(product.Id)}
+                    >
+                      Löschen
+                    </button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </div>
   );
