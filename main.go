@@ -859,6 +859,92 @@ func getUsersHandler(userRepository *database.UserRepository) http.HandlerFunc {
 	}
 }
 
+func InsertNotificationProviderHandler(notificationRepository *database.NotificationRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		var request struct {
+			Provider string `json:"provider"`
+			BaseUrl  string `json:"base_url"`
+			Key      string `json:"key"`
+			Topic    string `json:"topic"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&request)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		provider := database.NotificationProvider{
+			UserId:   id,
+			Provider: request.Provider,
+			BaseUrl:  request.BaseUrl,
+			Key:      request.Key,
+			Topic:    request.Topic,
+		}
+
+		err = notificationRepository.InsertProvider(provider)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(map[string]string{"message": "Successfully inserted provider!"})
+	}
+}
+
+func SendTestNotificationHandler(notificationRepository *database.NotificationRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		var request struct {
+			Title    string `json:"title"`
+			Message  string `json:"message"`
+			Priority int    `json:"priority"`
+		}
+		err := json.NewDecoder(r.Body).Decode(&request)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		notification := database.Notification{
+			Title:    request.Title,
+			Message:  request.Message,
+			Priority: request.Priority,
+		}
+
+		err = notificationRepository.SendNotification(id, notification)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(map[string]string{"message": "Successfully sent test notification!"})
+	}
+}
+
 type spaFileSystem struct {
 	base http.FileSystem
 }
@@ -944,6 +1030,12 @@ func main() {
 		log.Fatal(err)
 	}
 
+	notificationRepository := &database.NotificationRepository{Db: dbConnection}
+	err = notificationRepository.CreateTable()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	client, err := llm.NewFromEnv()
 	if err != nil {
 		log.Fatal(err)
@@ -965,6 +1057,8 @@ func main() {
 	http.Handle("/api/get_recipes", getRecipesHandler(recipeRepository))
 	http.Handle("/api/delete_user", deleteUserHandler(userRepository, recipeRepository, productRepository, apiRepository))
 	http.Handle("/api/get_users", getUsersHandler(userRepository))
+	http.Handle("/api/insert_notification_provider", InsertNotificationProviderHandler(notificationRepository))
+	http.Handle("/api/send_test_notification", SendTestNotificationHandler(notificationRepository))
 
 	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 
