@@ -539,7 +539,7 @@ func createProductByBarcodeHandler(productRepository *database.ProductRepository
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		err = json.NewEncoder(w).Encode(map[string]string{"message": "Product created successfully!"})
+		err = json.NewEncoder(w).Encode(&product)
 	}
 }
 
