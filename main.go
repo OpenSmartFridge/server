@@ -241,6 +241,8 @@ func loginHandler(userRepository *database.UserRepository) http.HandlerFunc {
 			return
 		}
 
+		sessionManager.RememberMe(r.Context(), true)
+
 		sessionManager.Put(r.Context(), "authenticated", true)
 		sessionManager.Put(r.Context(), "username", user.Username)
 		sessionManager.Put(r.Context(), "id", user.Id)
