@@ -859,7 +859,7 @@ func getUsersHandler(userRepository *database.UserRepository) http.HandlerFunc {
 	}
 }
 
-func InsertNotificationProviderHandler(notificationRepository *database.NotificationRepository) http.HandlerFunc {
+func insertNotificationProviderHandler(notificationRepository *database.NotificationRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -904,7 +904,7 @@ func InsertNotificationProviderHandler(notificationRepository *database.Notifica
 	}
 }
 
-func SendTestNotificationHandler(notificationRepository *database.NotificationRepository) http.HandlerFunc {
+func sendTestNotificationHandler(notificationRepository *database.NotificationRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -942,6 +942,23 @@ func SendTestNotificationHandler(notificationRepository *database.NotificationRe
 
 		w.Header().Set("Content-Type", "application/json")
 		err = json.NewEncoder(w).Encode(map[string]string{"message": "Successfully sent test notification!"})
+	}
+}
+
+func LogOutHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		}
+
+		err := sessionManager.Destroy(r.Context())
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(map[string]string{"message": "Successfully logged out!"})
 	}
 }
 
@@ -983,7 +1000,7 @@ func main() {
 
 	sessionManager = scs.New()
 	sessionManager.Store = postgresstore.New(dbConnection)
-	sessionManager.Lifetime = 24 * time.Hour
+	sessionManager.Lifetime = 720 * time.Hour
 	sessionManager.Cookie.HttpOnly = true
 	sessionManager.Cookie.Secure = isHTTPS
 	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
@@ -1057,8 +1074,9 @@ func main() {
 	http.Handle("/api/get_recipes", getRecipesHandler(recipeRepository))
 	http.Handle("/api/delete_user", deleteUserHandler(userRepository, recipeRepository, productRepository, apiRepository))
 	http.Handle("/api/get_users", getUsersHandler(userRepository))
-	http.Handle("/api/insert_notification_provider", InsertNotificationProviderHandler(notificationRepository))
-	http.Handle("/api/send_test_notification", SendTestNotificationHandler(notificationRepository))
+	http.Handle("/api/insert_notification_provider", insertNotificationProviderHandler(notificationRepository))
+	http.Handle("/api/send_test_notification", sendTestNotificationHandler(notificationRepository))
+	http.Handle("/api/logout", LogOutHandler())
 
 	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 
