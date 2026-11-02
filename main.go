@@ -263,14 +263,16 @@ func loginHandler(userRepository *database.UserRepository) http.HandlerFunc {
 	}
 }
 
-func meHandler(userRepository *database.UserRepository) http.HandlerFunc {
+func meHandler(userRepository *database.UserRepository, sm *scs.SessionManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 			return
 		}
 
-		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		ctx := r.Context()
+
+		id, ok := sm.Get(ctx, "id").(int)
 		if !ok {
 			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
@@ -281,6 +283,13 @@ func meHandler(userRepository *database.UserRepository) http.HandlerFunc {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
+
+		if err := sm.RenewToken(ctx); err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		sm.SetDeadline(ctx, time.Now().Add(30*24*time.Hour))
 
 		w.Header().Set("Content-Type", "application/json")
 		err = json.NewEncoder(w).Encode(map[string]any{
@@ -1135,7 +1144,7 @@ func main() {
 
 	http.Handle("/api/create_user", createUserHandler(userRepository))
 	http.Handle("/api/login", loginHandler(userRepository))
-	http.Handle("/api/me", meHandler(userRepository))
+	http.Handle("/api/me", meHandler(userRepository, sessionManager))
 	http.Handle("/api/get_products", getProductsHandler(productRepository))
 	http.Handle("/api/create_product", createProductHandler(productRepository))
 	http.Handle("/api/delete_product", deleteProductHandler(productRepository))
