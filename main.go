@@ -340,7 +340,6 @@ func createProductHandler(productRepository *database.ProductRepository) http.Ha
 		}
 
 		var request struct {
-			UserId int       `json:"user_id"`
 			Name   string    `json:"name"`
 			Expire time.Time `json:"expire"`
 		}
@@ -351,13 +350,8 @@ func createProductHandler(productRepository *database.ProductRepository) http.Ha
 			return
 		}
 
-		if id != request.UserId {
-			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-			return
-		}
-
 		product := database.Product{
-			UserId: request.UserId,
+			UserId: id,
 			Name:   request.Name,
 			Expire: request.Expire,
 		}
@@ -947,7 +941,7 @@ func sendTestNotificationHandler(notificationRepository *database.NotificationRe
 	}
 }
 
-func LogOutHandler() http.HandlerFunc {
+func logOutHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -961,6 +955,85 @@ func LogOutHandler() http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		err = json.NewEncoder(w).Encode(map[string]string{"message": "Successfully logged out!"})
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+func toggleFavoriteHandler(recipeRepository *database.RecipeRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		var request struct {
+			Id int `json:"id"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&request)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		err = recipeRepository.ToggleFavorite(request.Id, id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(map[string]string{"message": "Toggle successfully!"})
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+	}
+}
+
+func deleteRecipeHandler(recipeRepository *database.RecipeRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		var request struct {
+			Id int `json:"id"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&request)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		err = recipeRepository.DeleteRecipe(request.Id, id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(map[string]string{"message": "Successfully deleted recipe!"})
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 	}
 }
 
@@ -1078,7 +1151,9 @@ func main() {
 	http.Handle("/api/get_users", getUsersHandler(userRepository))
 	http.Handle("/api/insert_notification_provider", insertNotificationProviderHandler(notificationRepository))
 	http.Handle("/api/send_test_notification", sendTestNotificationHandler(notificationRepository))
-	http.Handle("/api/logout", LogOutHandler())
+	http.Handle("/api/logout", logOutHandler())
+	http.Handle("/api/toggle_favorite", toggleFavoriteHandler(recipeRepository))
+	http.Handle("/api/delete_recipe", deleteRecipeHandler(recipeRepository))
 
 	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 

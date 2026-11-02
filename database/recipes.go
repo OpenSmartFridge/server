@@ -111,7 +111,17 @@ func (r *RecipeRepository) GetRecipes(userId int) ([]Recipe, error) {
 	return recipes, nil
 }
 
+func (r *RecipeRepository) DeleteRecipe(id int, user_id int) error {
+	_, err := r.Db.Exec(`DELETE FROM recipes WHERE id = $1 AND user_id = $2`, id, user_id)
+	return err
+}
+
 func (r *RecipeRepository) DeleteRecipes(id int) error {
 	_, err := r.Db.Exec(`DELETE FROM recipes WHERE user_id = $1`, id)
+	return err
+}
+
+func (r *RecipeRepository) ToggleFavorite(id int, user_id int) error {
+	_, err := r.Db.Exec(`UPDATE recipes SET is_favourite = NOT is_favourite WHERE id = $1 AND user_id = $2`, id, user_id)
 	return err
 }
