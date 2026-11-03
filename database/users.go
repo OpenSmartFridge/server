@@ -100,3 +100,9 @@ func (r *UserRepository) GetUsers() ([]User, error) {
 
 	return users, nil
 }
+
+func (r *UserRepository) ToggleAdmin(id int) error {
+	_, err := r.Db.Exec(`UPDATE users SET is_admin = NOT is_admin WHERE id = $1`, id)
+
+	return err
+}

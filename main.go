@@ -23,12 +23,63 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"github.com/spf13/cobra"
 )
 
 const defaultPort = "8000"
 
 //go:embed frontend/dist
 var smartfridgeApp embed.FS
+
+var rootCmd = &cobra.Command{
+	Use:   "smartfridge",
+	Short: "Smartfridge Server",
+	Run: func(cmd *cobra.Command, args []string) {
+		runServer()
+	},
+}
+
+var toggleAdminCmd = &cobra.Command{
+	Use:   "chadm [username]",
+	Short: "Toggle admin",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		username := args[0]
+
+		err := godotenv.Load()
+		if err != nil {
+			log.Fatal("Error loading .env file")
+		}
+
+		dbConnection, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer func(dbConnection *sql.DB) {
+			err := dbConnection.Close()
+			if err != nil {
+				log.Fatal(err)
+			}
+		}(dbConnection)
+
+		userRepository := &database.UserRepository{
+			Db: dbConnection,
+		}
+
+		userId, err := userRepository.GetUserId(username)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = userRepository.ToggleAdmin(userId)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		log.Println("User toggled admin status from user: ", username)
+		return nil
+	},
+}
 
 var sessionManager *scs.SessionManager
 
@@ -1059,7 +1110,7 @@ func (fs spaFileSystem) Open(name string) (http.File, error) {
 	return fs.base.Open("index.html")
 }
 
-func main() {
+func runServer() {
 	println("Starting Smartfridge App")
 
 	err := godotenv.Load()
@@ -1184,4 +1235,14 @@ func main() {
 
 	log.Printf("SmartFridge running on http://localhost:%s and http://%s:%s", port, ip, port)
 	log.Fatal(srv.ListenAndServe())
+}
+
+func init() {
+	rootCmd.AddCommand(toggleAdminCmd)
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		log.Fatal(err)
+	}
 }
