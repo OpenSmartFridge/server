@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"encoding/json"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"smartfridge/database"
 	"smartfridge/llm"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,13 +25,17 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cobra"
+	"github.com/zeebo/xxh3"
 )
 
 const defaultPort = "8000"
 
 //go:embed frontend/dist
 var smartfridgeApp embed.FS
+
+var ctx = context.Background()
 
 var rootCmd = &cobra.Command{
 	Use:   "smartfridge",
@@ -661,7 +667,7 @@ func getProductsWithKeyHandler(productRepository *database.ProductRepository, ap
 	}
 }
 
-func generateRecipeHandler(productRepository *database.ProductRepository, userRepository *database.UserRepository, recipeRepository *database.RecipeRepository, client llm.Client) http.HandlerFunc {
+func generateRecipeHandler(productRepository *database.ProductRepository, userRepository *database.UserRepository, recipeRepository *database.RecipeRepository, client llm.Client, rdb *redis.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -680,9 +686,40 @@ func generateRecipeHandler(productRepository *database.ProductRepository, userRe
 			return
 		}
 
+		sort.Slice(products, func(i, j int) bool {
+			return products[i].Name < products[j].Name
+		})
+
+		productBytes, err := json.Marshal(products)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		productHash := xxh3.Hash(productBytes)
+		hashKey := strconv.FormatUint(productHash, 10)
+
+		cached, err := rdb.Get(r.Context(), hashKey).Bytes()
+		if err == nil {
+			var recipe database.Recipe
+			err = json.Unmarshal(cached, &recipe)
+			if err != nil {
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			err = json.NewEncoder(w).Encode(&recipe)
+			return
+		} else if !errors.Is(err, redis.Nil) {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
 		user, err := userRepository.GetUser(id)
 		if err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
 		}
 
 		diet := user.Diet
@@ -709,6 +746,18 @@ func generateRecipeHandler(productRepository *database.ProductRepository, userRe
 		}
 
 		err = recipeRepository.CreateRecipe(recipe, id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		redisData, err := json.Marshal(recipe)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		err = rdb.Set(r.Context(), hashKey, redisData, 0).Err()
 		if err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
@@ -1193,6 +1242,18 @@ func runServer() {
 		log.Fatal(err)
 	}
 
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     os.Getenv("REDIS_URL"),
+		Password: os.Getenv("REDIS_PASSWORD"),
+		DB:       0,
+	})
+
+	pong, err := rdb.Ping(ctx).Result()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Println(pong)
+
 	http.Handle("/api/create_user", createUserHandler(userRepository))
 	http.Handle("/api/login", loginHandler(userRepository))
 	http.Handle("/api/me", meHandler(userRepository, sessionManager))
@@ -1203,7 +1264,7 @@ func runServer() {
 	http.Handle("/api/create_product_barcode", createProductByBarcodeHandler(productRepository))
 	http.Handle("/api/create_key", createApiKeyHandler(apiRepository))
 	http.Handle("/api/get_products_with_key", getProductsWithKeyHandler(productRepository, apiRepository))
-	http.Handle("/api/generate_recipe", generateRecipeHandler(productRepository, userRepository, recipeRepository, client))
+	http.Handle("/api/generate_recipe", generateRecipeHandler(productRepository, userRepository, recipeRepository, client, rdb))
 	http.Handle("/api/update_diet", updateDietHandler(userRepository))
 	http.Handle("/api/update_password", updatePasswordHandler(userRepository))
 	http.Handle("/api/get_recipes", getRecipesHandler(recipeRepository))
