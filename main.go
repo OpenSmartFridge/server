@@ -725,6 +725,12 @@ func generateRecipeHandler(productRepository *database.ProductRepository, userRe
 				return
 			}
 
+			err = recipeRepository.CreateRecipe(recipe, id)
+			if err != nil {
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+
 			w.Header().Set("Content-Type", "application/json")
 			err = json.NewEncoder(w).Encode(&recipe)
 			return
@@ -732,6 +738,93 @@ func generateRecipeHandler(productRepository *database.ProductRepository, userRe
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
+
+		user, err := userRepository.GetUser(id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		diet := user.Diet
+
+		prompt := BuildRecipePrompt(products, diet)
+
+		response, err := client.Complete(r.Context(), prompt)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		var recipe database.Recipe
+
+		err = json.Unmarshal([]byte(response), &recipe)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if recipe.Name == "0" {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		err = recipeRepository.CreateRecipe(recipe, id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		redisData, err := json.Marshal(recipe)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		err = rdb.Set(r.Context(), hashKey, redisData, 0).Err()
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(recipe)
+		if err != nil {
+			return
+		}
+	}
+}
+
+func generateFreshRecipeHandler(productRepository *database.ProductRepository, userRepository *database.UserRepository, recipeRepository *database.RecipeRepository, client llm.Client, rdb *redis.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		products, err := productRepository.GetProducts(id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		sort.Slice(products, func(i, j int) bool {
+			return products[i].Name < products[j].Name
+		})
+
+		productBytes, err := json.Marshal(products)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		productHash := xxh3.Hash(productBytes)
+		hashKey := strconv.FormatUint(productHash, 10)
 
 		user, err := userRepository.GetUser(id)
 		if err != nil {
@@ -1282,6 +1375,7 @@ func runServer() {
 	http.Handle("/api/create_key", createApiKeyHandler(apiRepository))
 	http.Handle("/api/get_products_with_key", getProductsWithKeyHandler(productRepository, apiRepository))
 	http.Handle("/api/generate_recipe", generateRecipeHandler(productRepository, userRepository, recipeRepository, client, rdb))
+	http.Handle("/api/generate_fresh_recipe", generateFreshRecipeHandler(productRepository, userRepository, recipeRepository, client, rdb))
 	http.Handle("/api/update_diet", updateDietHandler(userRepository))
 	http.Handle("/api/update_password", updatePasswordHandler(userRepository))
 	http.Handle("/api/get_recipes", getRecipesHandler(recipeRepository))
