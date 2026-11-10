@@ -214,6 +214,36 @@ func DeleteUser(userRepository *database.UserRepository, recipeRepository *datab
 	return nil
 }
 
+func fetchProductNameFromBarcode(barcode string) (string, error) {
+	url := fmt.Sprintf(openFoodFactsURL, barcode, "?fields=product_name")
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	var apiResponse ApiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+		return "", err
+	}
+
+	if apiResponse.Status != 1 {
+		return "", errors.New("product not found")
+	}
+
+	return apiResponse.Product.ProductName, nil
+}
+
 func createUserHandler(userRepository *database.UserRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -533,78 +563,6 @@ func updateProductHandler(productRepository *database.ProductRepository) http.Ha
 	}
 }
 
-func createProductByBarcodeHandler(productRepository *database.ProductRepository) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
-		}
-
-		id, ok := sessionManager.Get(r.Context(), "id").(int)
-		if !ok {
-			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-		}
-
-		var request struct {
-			Barcode string    `json:"barcode"`
-			Expire  time.Time `json:"expire"`
-		}
-
-		err := json.NewDecoder(r.Body).Decode(&request)
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-			return
-		}
-
-		url := fmt.Sprintf(openFoodFactsURL, request.Barcode, "?fields=product_name")
-
-		resp, err := http.Get(url)
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-
-		defer func(Body io.ReadCloser) {
-			err := Body.Close()
-			if err != nil {
-				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-				return
-			}
-		}(resp.Body)
-
-		if resp.StatusCode != http.StatusOK {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-
-		var apiResponse ApiResponse
-		err = json.NewDecoder(resp.Body).Decode(&apiResponse)
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-
-		if apiResponse.Status != 1 {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-
-		product := database.Product{
-			UserId: id,
-			Name:   apiResponse.Product.ProductName,
-			Expire: request.Expire,
-		}
-
-		err = productRepository.CreateProduct(&product)
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		err = json.NewEncoder(w).Encode(&product)
-	}
-}
-
 func createApiKeyHandler(apiRepository *database.ApiRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
@@ -664,6 +622,65 @@ func getProductsWithKeyHandler(productRepository *database.ProductRepository, ap
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
+	}
+}
+
+func createProductByBarcodeHandler(productRepository *database.ProductRepository, rdb *redis.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		var request struct {
+			Barcode string    `json:"barcode"`
+			Expire  time.Time `json:"expire"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&request)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		cacheKey := "barcode:" + request.Barcode
+
+		productName, err := rdb.Get(r.Context(), cacheKey).Result()
+		if errors.Is(err, redis.Nil) {
+			productName, err = fetchProductNameFromBarcode(request.Barcode)
+			if err != nil {
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+
+			if setErr := rdb.Set(r.Context(), cacheKey, productName, 30*24*time.Hour).Err(); setErr != nil {
+				log.Printf("Error caching barcode %s: %v", request.Barcode, setErr)
+			}
+		} else if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		product := database.Product{
+			UserId: id,
+			Name:   productName,
+			Expire: request.Expire,
+		}
+
+		err = productRepository.CreateProduct(&product)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(&product)
 	}
 }
 
@@ -1261,7 +1278,7 @@ func runServer() {
 	http.Handle("/api/create_product", createProductHandler(productRepository))
 	http.Handle("/api/delete_product", deleteProductHandler(productRepository))
 	http.Handle("/api/update_product", updateProductHandler(productRepository))
-	http.Handle("/api/create_product_barcode", createProductByBarcodeHandler(productRepository))
+	http.Handle("/api/create_product_barcode", createProductByBarcodeHandler(productRepository, rdb))
 	http.Handle("/api/create_key", createApiKeyHandler(apiRepository))
 	http.Handle("/api/get_products_with_key", getProductsWithKeyHandler(productRepository, apiRepository))
 	http.Handle("/api/generate_recipe", generateRecipeHandler(productRepository, userRepository, recipeRepository, client, rdb))
