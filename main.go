@@ -255,24 +255,18 @@ func initNotificationCronjob(productRepository *database.ProductRepository, noti
 
 	c := cron.New(cron.WithLocation(loc), cron.WithSeconds())
 
-	_, err = c.AddFunc("0 0 8 * * *", func() {
-		err = checkForProductExpire(productRepository, notificationRepository)
-		if err != nil {
-			log.Println(err)
-		}
-	})
-	if err != nil {
-		return err
-	}
+	crons := strings.Split(os.Getenv("NOTIFICATION_CRON"), ";")
 
-	_, err = c.AddFunc("0 0 18 * * *", func() {
-		err = checkForProductExpire(productRepository, notificationRepository)
+	for _, crontime := range crons {
+		_, err = c.AddFunc(crontime, func() {
+			err = checkForProductExpire(productRepository, notificationRepository)
+			if err != nil {
+				log.Println(err)
+			}
+		})
 		if err != nil {
-			log.Println(err)
+			return err
 		}
-	})
-	if err != nil {
-		return err
 	}
 
 	c.Start()
