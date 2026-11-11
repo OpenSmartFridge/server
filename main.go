@@ -26,6 +26,7 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
+	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 	"github.com/zeebo/xxh3"
 )
@@ -242,6 +243,71 @@ func fetchProductNameFromBarcode(barcode string) (string, error) {
 	}
 
 	return apiResponse.Product.ProductName, nil
+}
+
+func initNotificationCronjob(productRepository *database.ProductRepository, notificationRepository *database.NotificationRepository) error {
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	loc, _ := time.LoadLocation(os.Getenv("TIMEZONE"))
+
+	c := cron.New(cron.WithLocation(loc), cron.WithSeconds())
+
+	_, err = c.AddFunc("0 0 8 * * *", func() {
+		err = checkForProductExpire(productRepository, notificationRepository)
+		if err != nil {
+			log.Println(err)
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = c.AddFunc("0 0 18 * * *", func() {
+		err = checkForProductExpire(productRepository, notificationRepository)
+		if err != nil {
+			log.Println(err)
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	c.Start()
+
+	return nil
+}
+
+func checkForProductExpire(productRepository *database.ProductRepository, notificationRepository *database.NotificationRepository) error {
+	users, err := notificationRepository.GetUsers()
+	if err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		products, err := productRepository.CheckForProductExpire(user)
+		if err != nil {
+			return err
+		}
+
+		for _, product := range products {
+
+			notification := &database.Notification{
+				Title:    "Produkte laufen in maximal einer Woche ab!",
+				Message:  fmt.Sprintf("Das Produkt %s läuft ab", product),
+				Priority: 8,
+			}
+
+			err = notificationRepository.SendNotification(user, *notification)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func createUserHandler(userRepository *database.UserRepository) http.HandlerFunc {
@@ -1363,6 +1429,11 @@ func runServer() {
 		log.Fatal(err)
 	}
 	log.Println(pong)
+
+	err = initNotificationCronjob(productRepository, notificationRepository)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	http.Handle("/api/create_user", createUserHandler(userRepository))
 	http.Handle("/api/login", loginHandler(userRepository))

@@ -134,3 +134,29 @@ func (r *ProductRepository) DeleteProducts(id int) error {
 	_, err := r.Db.Exec(`DELETE FROM products WHERE user_id = $1`, id)
 	return err
 }
+
+func (r *ProductRepository) CheckForProductExpire(userId int) ([]string, error) {
+	p, err := r.Db.Query(`SELECT name FROM products WHERE user_id = $1 AND expire <= NOW() + INTERVAL '7 days'`, userId)
+	if err != nil {
+		return nil, err
+	}
+	defer p.Close()
+
+	var products []string
+
+	for p.Next() {
+		var name string
+
+		if err := p.Scan(&name); err != nil {
+			return nil, err
+		}
+
+		products = append(products, name)
+	}
+
+	if err := p.Err(); err != nil {
+		return nil, err
+	}
+
+	return products, nil
+}

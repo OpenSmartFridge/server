@@ -98,6 +98,8 @@ func (r *NotificationRepository) SendNotification(userId int, notification Notif
 			return errors.New(resp.Status)
 		}
 	case "ntfy":
+		notification.Priority = 5
+
 		req, err := http.NewRequest("POST", provider.BaseUrl+"/"+provider.Topic, strings.NewReader(notification.Message))
 		if err != nil {
 			return err
@@ -124,4 +126,35 @@ func (r *NotificationRepository) SendNotification(userId int, notification Notif
 	}
 
 	return err
+}
+
+func (r *NotificationRepository) GetUsers() ([]int, error) {
+	rows, err := r.Db.Query(`SELECT DISTINCT user_id FROM notifications`)
+	if err != nil {
+		return nil, err
+	}
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			return
+		}
+	}(rows)
+
+	var users []int
+
+	for rows.Next() {
+		var userId int
+
+		if err := rows.Scan(&userId); err != nil {
+			return nil, err
+		}
+
+		users = append(users, userId)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }
