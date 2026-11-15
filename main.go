@@ -1099,6 +1099,36 @@ func deleteUserHandler(userRepository *database.UserRepository, recipeRepository
 	}
 }
 
+func deleteOwnUserHandler(userRepository *database.UserRepository, recipeRepository *database.RecipeRepository, productRepository *database.ProductRepository, apiRepository *database.ApiRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		id, ok := sessionManager.Get(r.Context(), "id").(int)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		err := DeleteUser(userRepository, recipeRepository, productRepository, apiRepository, id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		err = sessionManager.Destroy(r.Context())
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(map[string]string{"message": "Successfully deleted user!"})
+	}
+}
+
 func getUsersHandler(userRepository *database.UserRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
@@ -1451,6 +1481,7 @@ func runServer() {
 	http.Handle("/api/logout", logOutHandler())
 	http.Handle("/api/toggle_favorite", toggleFavoriteHandler(recipeRepository))
 	http.Handle("/api/delete_recipe", deleteRecipeHandler(recipeRepository))
+	http.Handle("/api/delete_own_user", deleteOwnUserHandler(userRepository, recipeRepository, productRepository, apiRepository))
 
 	http.Handle("/", http.FileServer(spaFileSystem{http.FS(frontendFS)}))
 
