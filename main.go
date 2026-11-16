@@ -55,7 +55,7 @@ var toggleAdminCmd = &cobra.Command{
 
 		err := godotenv.Load()
 		if err != nil {
-			log.Fatal("Error loading .env file")
+			log.Println("no .env; using system environment variables")
 		}
 
 		dbConnection, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
@@ -246,11 +246,6 @@ func fetchProductNameFromBarcode(barcode string) (string, error) {
 }
 
 func initNotificationCronjob(productRepository *database.ProductRepository, notificationRepository *database.NotificationRepository) error {
-	err := godotenv.Load(".env")
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
 	loc, _ := time.LoadLocation(os.Getenv("TIMEZONE"))
 
 	c := cron.New(cron.WithLocation(loc), cron.WithSeconds())
@@ -258,8 +253,8 @@ func initNotificationCronjob(productRepository *database.ProductRepository, noti
 	crons := strings.Split(os.Getenv("NOTIFICATION_CRON"), ";")
 
 	for _, crontime := range crons {
-		_, err = c.AddFunc(crontime, func() {
-			err = checkForProductExpire(productRepository, notificationRepository)
+		_, err := c.AddFunc(crontime, func() {
+			err := checkForProductExpire(productRepository, notificationRepository)
 			if err != nil {
 				log.Println(err)
 			}
@@ -1362,9 +1357,9 @@ func (fs spaFileSystem) Open(name string) (http.File, error) {
 func runServer() {
 	println("Starting Smartfridge App")
 
-	err := godotenv.Load()
+	err := godotenv.Load(".env")
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("no .env; using system environment variables")
 	}
 
 	isHTTPS, err := strconv.ParseBool(os.Getenv("HTTPS"))
