@@ -1,10 +1,62 @@
 services:
   app:
     image: smartfridge:test
+    env_file:
+      - .env
     environment:
       PORT: ${PORT}
       HTTPS: ${HTTPS}
       DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      TIMEZONE: ${TIMEZONE}
+      NOTIFICATION_PRIORITY: ${NOTIFICATION_PRIORITY}
+      NOTIFICATION_CRON: ${NOTIFICATION_CRON}
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      LLM_LANGUAGE: ${LLM_LANGUAGE}
+      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # OPENAI_MODEL: ${OPENAI_MODEL}
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # ANTHROPIC_MODEL: ${ANTHROPIC_MODEL}
+      CUSTOM_BASE_URL: ${CUSTOM_BASE_URL}
+      CUSTOM_MODEL: ${CUSTOM_MODEL}
+      CUSTOM_KEY: ${CUSTOM_KEY}
     ports:
       - "${PORT}:${PORT}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keydb:
+        condition: service_healthy
     restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  keydb:
+    image: eqalpha/keydb:latest
+    command: keydb-server /etc/keydb/keydb.conf --appendonly yes
+    volumes:
+      - keydb_data:/data
+    healthcheck:
+      test: ["CMD", "keydb-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  keydb_data:
