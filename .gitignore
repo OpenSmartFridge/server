@@ -1,0 +1,44 @@
+# Environment and secrets
+.env
+.env.*
+!example.env
+!docker.example.env
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/*.key
+frontend/*.crt
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+bin/
+
+# Build and temporary files
+dist/
+build/
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+
+# IDE and editor files
+.idea/
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
