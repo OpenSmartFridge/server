@@ -1,25 +1,19 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
-import fs from 'fs'
+import { defineConfig, loadEnv } from 'vite'
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    allowedHosts: [
-      "windows.taila33aff.ts.net",
-    ],
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, '..', '')
+  const port = env.PORT || process.env.PORT || '8001'
 
-    https: {
-      key: fs.readFileSync('./windows.taila33aff.ts.net.key'),
-      cert: fs.readFileSync('./windows.taila33aff.ts.net.crt'),
-    },
-
-    proxy: {
-      "/api": {
-        target: "http://localhost:8001",
-        changeOrigin: true,
-        secure: false,
+  return {
+    plugins: [react()],
+    server: {
+      proxy: {
+        '/api': {
+          target: `http://localhost:${port}`,
+          changeOrigin: true,
+        },
       },
     },
-  },
+  }
 })

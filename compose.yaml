@@ -1,6 +1,6 @@
 services:
   app:
-    image: smartfridge:test
+    image: opensmartfridge/server:latest
     env_file:
       - .env
     environment:
