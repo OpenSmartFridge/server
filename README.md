@@ -1,3 +1,5 @@
+![OpenSmartFridge](assets/banner.png)
+
 # 🧊 OpenSmartFridge Server
 
 **OpenSmartFridge** ist ein selbst gehosteter Server zur Verwaltung von Lebensmitteln im Kühlschrank — mit moderner Weboberfläche, Ablaufdatum-Erkennung, Barcode-Unterstützung und KI-gestützter Rezeptgenerierung.
